@@ -13,28 +13,28 @@ public class AudioRecordReplay extends AppCompatActivity {
         findViewById(R.id.record).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                AudioRecordManager.getInstanec().startRecord();
+                AudioRecordManager.getInstanec(getApplicationContext()).startRecord();
             }
         });
 
         findViewById(R.id.stopRecord).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                AudioRecordManager.getInstanec().stopRecord();
+                AudioRecordManager.getInstanec(getApplicationContext()).stopRecord();
             }
         });
 
         findViewById(R.id.play).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                AudioRecordManager.getInstanec().replay();
+                AudioRecordManager.getInstanec(getApplicationContext()).replay();
             }
         });
 
         findViewById(R.id.stopPlay).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                AudioRecordManager.getInstanec().stopReplay();
+                AudioRecordManager.getInstanec(getApplicationContext()).stopReplay();
             }
         });
     }

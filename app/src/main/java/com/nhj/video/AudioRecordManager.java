@@ -1,6 +1,7 @@
 package com.nhj.video;
 
 import android.annotation.TargetApi;
+import android.content.Context;
 import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
@@ -8,7 +9,10 @@ import android.media.AudioTrack;
 import android.media.MediaRecorder;
 import android.os.Build;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Message;
 import android.util.Log;
+import android.widget.Toast;
 
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -37,34 +41,51 @@ public class AudioRecordManager {
 
     private static final String TAG = AudioRecordManager.class.getSimpleName();
     private volatile static AudioRecordManager mAudioRecordManager;
-    private volatile  boolean isRecoreder;
+    private volatile boolean isRecoreder;
     private String audioFolderFile;
     private String DIR_NAME = "AUDIO";
     private ExecutorService executorService;
     private Future<?> resultRecord;
     private File wavFile;
     private Future<String> replayResult;
+    private Handler handler = new Handler() {
+        @Override
+        public void handleMessage(Message msg) {
+            super.handleMessage(msg);
+            switch (msg.what) {
+                case 1:
+                    Toast.makeText(context, "录制结束", Toast.LENGTH_SHORT).show();
+                    break;
+                case 2:
+                    Toast.makeText(context, "播放结束", Toast.LENGTH_SHORT).show();
+                    break;
 
-    private AudioRecordManager() {
+            }
+        }
+    };
+
+    private Context context;
+    private File pcmFile;
+
+    private AudioRecordManager(Context context) {
+        this.context = context;
         //文件目录
         audioFolderFile = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM).getAbsolutePath()
                 + File.separator + DIR_NAME;
+        Log.i("@@", "audioFolderFile = " + audioFolderFile);
         File wavDir = new File(audioFolderFile);
         if (!wavDir.exists()) {
             boolean flag = wavDir.mkdirs();
-            Log.d(TAG, "文件路径:" + audioFolderFile + "创建结果:" + flag);
         } else {
-            Log.d(TAG, "文件路径:" + audioFolderFile + "创建结果: 已存在");
         }
-
     }
 
 
-    public static AudioRecordManager getInstanec() {
+    public static AudioRecordManager getInstanec(Context context) {
         if (mAudioRecordManager == null) {
             synchronized (AudioRecordManager.class) {
                 if (mAudioRecordManager == null) {
-                    mAudioRecordManager = new AudioRecordManager();
+                    mAudioRecordManager = new AudioRecordManager(context);
                 }
             }
         }
@@ -75,13 +96,14 @@ public class AudioRecordManager {
      * 开始录制
      */
     public void startRecord() {
+        Log.i("@@", "startRecord1");
         if (isRecoreder) {
             return;
         }
         isRecoreder = true;
         SimpleDateFormat sdf = new SimpleDateFormat("yyMMdd_HHmmss", Locale.CHINA);
         String fName = sdf.format(new Date());
-        File pcmFile = new File(audioFolderFile + File.separator + fName + ".pcm");
+         pcmFile = new File(audioFolderFile + File.separator + fName + ".pcm");
 
         wavFile = new File(audioFolderFile + File.separator + fName + ".wav");
 
@@ -90,14 +112,19 @@ public class AudioRecordManager {
             executorService = Executors.newCachedThreadPool();
         }
         resultRecord = executorService.submit(recorderTask);
+        Log.i("@@", "startRecord");
     }
 
     /**
      * 关闭录制
      */
     public void stopRecord() {
+
         if (resultRecord != null) {
+            Log.i("@@", "stopRecord");
             resultRecord.cancel(true);
+            //录制停止
+            isRecoreder = false;
         }
     }
 
@@ -107,7 +134,7 @@ public class AudioRecordManager {
             Log.i("@@", "无法播放");
             return;
         }
-        isRecoreder = true;
+//        isRecoreder = true;
         if (executorService == null) {
             executorService = Executors.newCachedThreadPool();
         }
@@ -117,9 +144,9 @@ public class AudioRecordManager {
     }
 
     public void stopReplay() {
-        if(replayResult!=null){
+        if (replayResult != null) {
             replayResult.cancel(true);
-            isRecoreder = false ;
+            isRecoreder = false;
         }
     }
 
@@ -134,7 +161,8 @@ public class AudioRecordManager {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
                 audioTrack = new AudioTrack.Builder().setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).
                         setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()).setAudioFormat(new AudioFormat.Builder().
-                        setEncoding(ENCODING_PCM_16BIT).setSampleRate(RecorderTask.SAMPLE_RATE_HERTZ).setChannelIndexMask(AudioFormat.CHANNEL_OUT_STEREO).build()).build();
+                        setEncoding(ENCODING_PCM_16BIT).setSampleRate(RecorderTask.SAMPLE_RATE_HERTZ).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
+                        .build();
             }
 
         }
@@ -155,14 +183,16 @@ public class AudioRecordManager {
                         ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
                         if (audioTrack != null) {
                             audioTrack.play();
-                            while (!Thread.interrupted()&&isRecoreder) {
+                            while (!Thread.interrupted() && !isRecoreder) {
                                 int read = fileChannel.read(buffer);
                                 if (read == AudioTrack.ERROR_BAD_VALUE || read == AudioTrack.ERROR_INVALID_OPERATION) {
                                     continue;
-                                } else {
+                                } else if(read==-1){
+                                    break ;
+                                }else{
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                                         buffer.flip();
-                                        audioTrack.write(buffer, bufferSize, AudioTrack.WRITE_BLOCKING);
+                                        audioTrack.write(buffer, read,audioTrack.WRITE_BLOCKING);
                                         buffer.clear();
                                     }
                                 }
@@ -183,7 +213,7 @@ public class AudioRecordManager {
 
                 }
             }
-
+            handler.obtainMessage(2).sendToTarget();
             return null;
         }
     }
@@ -213,20 +243,24 @@ public class AudioRecordManager {
 
         @Override
         public void run() {
+            Log.i("@@", "run RecorderTask");
             FileChannel fileChannel = null;
             FileOutputStream pcmFileOutputStream = null;
             try {
                 pcmFileOutputStream = new FileOutputStream(pcmFile);
                 fileChannel = pcmFileOutputStream.getChannel();
-                ByteBuffer buffer = ByteBuffer.allocate(minBuffer);
+//                ByteBuffer buffer = ByteBuffer.allocateDirect(minBuffer);
                 audioRecord.startRecording();
                 while (!Thread.interrupted()) {
-                    int read = audioRecord.read(buffer, minBuffer);
+//                    int read = audioRecord.read(buffer, minBuffer);
+                    byte[] bytes = new byte[minBuffer];
+                    int read = audioRecord.read(bytes, 0, minBuffer);
                     if (read != audioRecord.ERROR_INVALID_OPERATION && read != AudioRecord.ERROR_BAD_VALUE) {
-                        buffer.flip();
-                        fileChannel.write(buffer);
-                        buffer.clear();
                         Log.i("@@", "byte size = " + read);
+//                        buffer.flip();
+//                        fileChannel.write(bytes);
+//                        buffer.clear();
+                        pcmFileOutputStream.write(bytes);
                     }
                 }
 
@@ -236,23 +270,30 @@ public class AudioRecordManager {
                 e.printStackTrace();
             } finally {
                 try {
-                    if (fileChannel != null)
+                    if (fileChannel != null) {
                         fileChannel.close();
-                    if (pcmFileOutputStream != null)
+                    }
+                    if (pcmFileOutputStream != null) {
+                        pcmFileOutputStream.flush();
                         pcmFileOutputStream.close();
+                    }
+
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
 
             }
 
+            Log.i("@@", "录制声音到文件完毕，开始添加header转换为wav可播放文件");
             //录制停止
             isRecoreder = false;
             //当录制完成就将Pcm编码数据转化为wav文件，也可以直接生成.wav
             synchronized (wavFile) {
                 pcmtoWav(pcmFile.getPath(), wavFile.getPath(), minBuffer);
+                Log.i("@@", "转换完毕");
             }
 
+            handler.obtainMessage(1).sendToTarget();
             Log.d(TAG, "录制结束");
 
 
