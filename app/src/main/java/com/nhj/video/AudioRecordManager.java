@@ -96,17 +96,14 @@ public class AudioRecordManager {
      * 开始录制
      */
     public void startRecord() {
-        Log.i("@@", "startRecord1");
         if (isRecoreder) {
             return;
         }
         isRecoreder = true;
         SimpleDateFormat sdf = new SimpleDateFormat("yyMMdd_HHmmss", Locale.CHINA);
         String fName = sdf.format(new Date());
-         pcmFile = new File(audioFolderFile + File.separator + fName + ".pcm");
-
+        pcmFile = new File(audioFolderFile + File.separator + fName + ".pcm");
         wavFile = new File(audioFolderFile + File.separator + fName + ".wav");
-
         RecorderTask recorderTask = new RecorderTask(pcmFile, wavFile);
         if (executorService == null) {
             executorService = Executors.newCachedThreadPool();
@@ -134,7 +131,6 @@ public class AudioRecordManager {
             Log.i("@@", "无法播放");
             return;
         }
-//        isRecoreder = true;
         if (executorService == null) {
             executorService = Executors.newCachedThreadPool();
         }
@@ -187,12 +183,12 @@ public class AudioRecordManager {
                                 int read = fileChannel.read(buffer);
                                 if (read == AudioTrack.ERROR_BAD_VALUE || read == AudioTrack.ERROR_INVALID_OPERATION) {
                                     continue;
-                                } else if(read==-1){
-                                    break ;
-                                }else{
+                                } else if (read == -1) {
+                                    break;
+                                } else {
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                                         buffer.flip();
-                                        audioTrack.write(buffer, read,audioTrack.WRITE_BLOCKING);
+                                        audioTrack.write(buffer, read, audioTrack.WRITE_BLOCKING);
                                         buffer.clear();
                                     }
                                 }
@@ -289,6 +285,7 @@ public class AudioRecordManager {
             isRecoreder = false;
             //当录制完成就将Pcm编码数据转化为wav文件，也可以直接生成.wav
             synchronized (wavFile) {
+                //防止播放线程在wavFile文件还没生成就开始访问
                 pcmtoWav(pcmFile.getPath(), wavFile.getPath(), minBuffer);
                 Log.i("@@", "转换完毕");
             }
