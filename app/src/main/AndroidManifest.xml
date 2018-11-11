@@ -6,7 +6,6 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <!-- 录音权限 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-
     <uses-permission android:name="android.permission.CAMERA" />
 
     <uses-feature android:name="android.hardware.camera" />
@@ -29,7 +28,8 @@
             android:name=".AudioRecordReplay"
             android:label="@string/title_activity_audio_record_replay"
             android:theme="@style/AppTheme.NoActionBar" />
-        <activity android:name=".CameraPreviewActy"></activity>
+        <activity android:name=".CameraPreviewActy" />
+        <activity android:name=".MediaExtractorMuxerActivity"></activity>
     </application>
 
 </manifest>

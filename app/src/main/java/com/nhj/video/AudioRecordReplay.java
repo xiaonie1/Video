@@ -39,4 +39,9 @@ public class AudioRecordReplay extends AppCompatActivity {
         });
     }
 
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        AudioRecordManager.getInstanec(getApplicationContext()).release() ;
+    }
 }

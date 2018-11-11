@@ -125,6 +125,94 @@ public class AudioRecordManager {
         }
     }
 
+    public  void release() {
+       executorService.shutdownNow() ;
+    }
+
+    class RecorderTask implements Runnable {
+        private final File pcmFile;
+        private final File wavFile;
+        private int minBuffer = 10240;
+
+        private AudioRecord audioRecord;
+        /**
+         * 采样率，现在能够保证在所有设备上使用的采样率是44100Hz, 但是其他的采样率（22050, 16000, 11025）在一些设备上也可以使用。
+         */
+        public static final int SAMPLE_RATE_HERTZ = 44100;
+        /**
+         * 声道数。CHANNEL_IN_MONO and CHANNEL_IN_STEREO. 其中CHANNEL_IN_MONO是可以保证在所有设备能够使用的。
+         */
+        public static final int CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_STEREO;
+
+        public RecorderTask(File pcmFile, File wavFile) {
+            this.pcmFile = pcmFile;
+            this.wavFile = wavFile;
+            minBuffer = AudioRecord.getMinBufferSize(SAMPLE_RATE_HERTZ, AudioFormat.CHANNEL_IN_STEREO, ENCODING_PCM_16BIT);
+            audioRecord = new AudioRecord(MediaRecorder.AudioSource.MIC, SAMPLE_RATE_HERTZ, AudioFormat.CHANNEL_IN_STEREO,
+                    ENCODING_PCM_16BIT, minBuffer);
+        }
+
+        @Override
+        public void run() {
+            Log.i("@@", "run RecorderTask");
+            FileChannel fileChannel = null;
+            FileOutputStream pcmFileOutputStream = null;
+            try {
+                pcmFileOutputStream = new FileOutputStream(pcmFile);
+                fileChannel = pcmFileOutputStream.getChannel();
+//                ByteBuffer buffer = ByteBuffer.allocateDirect(minBuffer);
+                audioRecord.startRecording();
+                while (!Thread.interrupted()) {
+//                    int read = audioRecord.read(buffer, minBuffer);
+                    byte[] bytes = new byte[minBuffer];
+                    int read = audioRecord.read(bytes, 0, minBuffer);
+                    if (read != audioRecord.ERROR_INVALID_OPERATION && read != AudioRecord.ERROR_BAD_VALUE) {
+                        Log.i("@@", "byte size = " + read);
+//                        buffer.flip();
+//                        fileChannel.write(bytes);
+//                        buffer.clear();
+                        pcmFileOutputStream.write(bytes);
+                    }
+                }
+
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            } finally {
+                try {
+                    if (fileChannel != null) {
+                        fileChannel.close();
+                    }
+                    if (pcmFileOutputStream != null) {
+                        pcmFileOutputStream.flush();
+                        pcmFileOutputStream.close();
+                    }
+
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+            }
+
+            Log.i("@@", "录制声音到文件完毕，开始添加header转换为wav可播放文件");
+            //录制停止
+            isRecoreder = false;
+            //当录制完成就将Pcm编码数据转化为wav文件，也可以直接生成.wav
+            synchronized (wavFile) {
+                //防止播放线程在wavFile文件还没生成就开始访问
+                pcmtoWav(pcmFile.getPath(), wavFile.getPath(), minBuffer);
+                Log.i("@@", "转换完毕");
+            }
+
+            handler.obtainMessage(1).sendToTarget();
+            Log.d(TAG, "录制结束");
+
+
+        }
+    }
+
+
 
     public void replay() {
         if (isRecoreder) {
@@ -214,88 +302,7 @@ public class AudioRecordManager {
         }
     }
 
-    class RecorderTask implements Runnable {
-        private final File pcmFile;
-        private final File wavFile;
-        private int minBuffer = 10240;
 
-        private AudioRecord audioRecord;
-        /**
-         * 采样率，现在能够保证在所有设备上使用的采样率是44100Hz, 但是其他的采样率（22050, 16000, 11025）在一些设备上也可以使用。
-         */
-        public static final int SAMPLE_RATE_HERTZ = 44100;
-        /**
-         * 声道数。CHANNEL_IN_MONO and CHANNEL_IN_STEREO. 其中CHANNEL_IN_MONO是可以保证在所有设备能够使用的。
-         */
-        public static final int CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_STEREO;
-
-        public RecorderTask(File pcmFile, File wavFile) {
-            this.pcmFile = pcmFile;
-            this.wavFile = wavFile;
-            minBuffer = AudioRecord.getMinBufferSize(SAMPLE_RATE_HERTZ, AudioFormat.CHANNEL_IN_STEREO, ENCODING_PCM_16BIT);
-            audioRecord = new AudioRecord(MediaRecorder.AudioSource.MIC, SAMPLE_RATE_HERTZ, AudioFormat.CHANNEL_IN_STEREO,
-                    ENCODING_PCM_16BIT, minBuffer);
-        }
-
-        @Override
-        public void run() {
-            Log.i("@@", "run RecorderTask");
-            FileChannel fileChannel = null;
-            FileOutputStream pcmFileOutputStream = null;
-            try {
-                pcmFileOutputStream = new FileOutputStream(pcmFile);
-                fileChannel = pcmFileOutputStream.getChannel();
-//                ByteBuffer buffer = ByteBuffer.allocateDirect(minBuffer);
-                audioRecord.startRecording();
-                while (!Thread.interrupted()) {
-//                    int read = audioRecord.read(buffer, minBuffer);
-                    byte[] bytes = new byte[minBuffer];
-                    int read = audioRecord.read(bytes, 0, minBuffer);
-                    if (read != audioRecord.ERROR_INVALID_OPERATION && read != AudioRecord.ERROR_BAD_VALUE) {
-                        Log.i("@@", "byte size = " + read);
-//                        buffer.flip();
-//                        fileChannel.write(bytes);
-//                        buffer.clear();
-                        pcmFileOutputStream.write(bytes);
-                    }
-                }
-
-            } catch (FileNotFoundException e) {
-                e.printStackTrace();
-            } catch (IOException e) {
-                e.printStackTrace();
-            } finally {
-                try {
-                    if (fileChannel != null) {
-                        fileChannel.close();
-                    }
-                    if (pcmFileOutputStream != null) {
-                        pcmFileOutputStream.flush();
-                        pcmFileOutputStream.close();
-                    }
-
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-
-            }
-
-            Log.i("@@", "录制声音到文件完毕，开始添加header转换为wav可播放文件");
-            //录制停止
-            isRecoreder = false;
-            //当录制完成就将Pcm编码数据转化为wav文件，也可以直接生成.wav
-            synchronized (wavFile) {
-                //防止播放线程在wavFile文件还没生成就开始访问
-                pcmtoWav(pcmFile.getPath(), wavFile.getPath(), minBuffer);
-                Log.i("@@", "转换完毕");
-            }
-
-            handler.obtainMessage(1).sendToTarget();
-            Log.d(TAG, "录制结束");
-
-
-        }
-    }
 
     /**
      * 将pcm文件转化为可点击播放的wav文件
@@ -412,3 +419,7 @@ public class AudioRecordManager {
 
 
 }
+/**
+ * 优化：
+ * 播放线程可以等待录制线程。一旦录制线程被中断结束，就可以唤醒播放线程自动播放
+ */
